@@ -1,0 +1,38 @@
+name: publish-customer-images
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: Image tag to copy
+        required: true
+        default: v1.7.9
+permissions:
+  contents: read
+  packages: write
+jobs:
+  copy:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        name: [hammer-backend, hammer-gateway, hammer-admin-chat]
+    steps:
+      - uses: docker/setup-buildx-action@v3
+      - name: Copy into repo namespace with GITHUB_TOKEN
+        env:
+          GHCR_PULL: ${{ secrets.GHCR_PULL }}
+          DST_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ github.event.inputs.tag }}
+          NAME: ${{ matrix.name }}
+          ACTOR: ${{ github.actor }}
+        run: |
+          set -euo pipefail
+          SRC="ghcr.io/hotkingda/${NAME}:${TAG}"
+          DST="ghcr.io/hotkingda/hammer-update/${NAME}:${TAG}"
+          PULL_TOKEN="${GHCR_PULL:-$DST_TOKEN}"
+          echo "$PULL_TOKEN" | docker login ghcr.io -u hotkingda --password-stdin
+          docker pull --platform linux/amd64 "$SRC"
+          docker tag "$SRC" "$DST"
+          echo "$DST_TOKEN" | docker login ghcr.io -u "$ACTOR" --password-stdin
+          docker push "$DST"
+          docker buildx imagetools inspect "$DST"
